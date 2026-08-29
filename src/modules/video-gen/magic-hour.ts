@@ -141,6 +141,12 @@ async function pollForCompletion(apiKey: string, projectId: string): Promise<str
 }
 
 async function downloadVideo(apiKey: string, url: string, outputPath: string): Promise<void> {
+  // Ensure output directory exists
+  const dir = path.dirname(outputPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Failed to download video: ${res.status}`);
