@@ -10,7 +10,7 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install all dependencies (including dev for TypeScript)
+# Install all dependencies
 RUN npm install
 
 # Copy source
@@ -21,5 +21,5 @@ RUN mkdir -p output tokens data
 
 EXPOSE 3000
 
-# Use tsx to run TypeScript directly
+# Render sets PORT env var automatically
 CMD ["npx", "tsx", "src/index.ts", "serve"]

@@ -1,0 +1,18 @@
+services:
+  - type: worker
+    name: crushing-reels-factory
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npx tsx src/index.ts serve
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: YOUTUBE_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_CLIENT_SECRET
+        sync: false
+      - key: YOUTUBE_REDIRECT_URI
+        value: http://localhost:3000/oauth2callback
+      - key: NODE_ENV
+        value: production
