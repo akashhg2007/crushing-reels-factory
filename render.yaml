@@ -6,7 +6,7 @@ services:
     buildCommand: npm install
     startCommand: npx tsx src/index.ts serve
     envVars:
-      - key: PUTER_AUTH_TOKEN
+      - key: MAGIC_HOUR_API_KEY
         sync: false
       - key: YOUTUBE_CLIENT_ID
         sync: false
