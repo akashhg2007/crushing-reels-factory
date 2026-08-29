@@ -34,7 +34,7 @@ export async function generateVideo(prompt: string): Promise<VideoGenResult> {
       settings: {
         resolution: "1080p",
         aspect_ratio: "9:16",
-        duration: 5,
+        duration: 10,
       },
     }),
   });
@@ -51,7 +51,7 @@ export async function generateVideo(prompt: string): Promise<VideoGenResult> {
   const videoPath = await pollForCompletion(apiKey, taskId);
   console.log("[kling] Video saved to:", videoPath);
 
-  return { videoPath, duration: 5 };
+  return { videoPath, duration: 10 };
 }
 
 async function pollForCompletion(apiKey: string, taskId: string): Promise<string> {
