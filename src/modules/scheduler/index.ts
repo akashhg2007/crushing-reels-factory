@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import cron from "node-cron";
 import { loadDb, saveDb, createJob, updateJob } from "../../db";
 import {
@@ -8,155 +10,96 @@ import {
   generateTags,
   ObjectTemplate,
 } from "../prompt-engine";
-import { generateVideo } from "../video-gen";
-import { processVideo } from "../video-processor";
 import { uploadToYouTube } from "../youtube";
 
+const OUTPUT_DIR = path.join(process.cwd(), "output");
 const VIDEOS_PER_DAY = 6;
-const START_HOUR = 8; // Start at 8 AM UTC
-const END_HOUR = 20; // End at 8 PM UTC
-const INTERVAL_MINUTES = Math.floor((END_HOUR - START_HOUR) * 60 / VIDEOS_PER_DAY);
 
 /**
- * Run the full pipeline for one video with a specific template.
- * @param template - The object template to use
- * @param testMode - If true, skip YouTube upload (for testing)
+ * Re-upload an existing processed video to YouTube with new title/description
  */
-export async function runPipelineOnce(template: ObjectTemplate, testMode = false): Promise<boolean> {
-  console.log("\n--- VIDEO PIPELINE START ---");
-  console.log(`Object: ${template.name} (${template.material})`);
-  if (testMode) console.log("⚠️  TEST MODE — YouTube upload will be skipped");
-
+export async function reUploadRandom(): Promise<boolean> {
   const db = loadDb();
-  const prompt = generatePrompt(template);
+  const templates = getTemplates();
+
+  // Get all processed videos
+  const videos = fs.readdirSync(OUTPUT_DIR)
+    .filter(f => f.startsWith("processed_") && f.endsWith(".mp4"));
+
+  if (videos.length === 0) {
+    console.log("[reupload] No processed videos found!");
+    return false;
+  }
+
+  // Pick a random video
+  const videoFile = videos[Math.floor(Math.random() * videos.length)];
+  const videoPath = path.join(OUTPUT_DIR, videoFile);
+
+  // Pick a random template for title/description
+  const template = templates[Math.floor(Math.random() * templates.length)];
+
   const title = generateTitle(template);
   const description = generateDescription(template);
   const tags = generateTags(template);
 
-  console.log("Prompt:", prompt.substring(0, 150) + "...");
+  console.log(`\n--- RE-UPLOAD ---`);
+  console.log(`Video: ${videoFile}`);
+  console.log(`Object: ${template.name}`);
+  console.log(`Title: ${title}`);
 
-  const job = createJob(db, 0, prompt);
-  updateJob(db, job.id, { status: "generating" });
+  const job = createJob(db, template.name.charCodeAt(0), `Re-upload: ${template.name}`);
 
   try {
-    // Step 1: Generate video
-    console.log("\n[Step 1] Generating video...");
-    const genResult = await generateVideo(prompt);
-    updateJob(db, job.id, { status: "processing", videoPath: genResult.videoPath });
-
-    // Step 2: Process video
-    console.log("\n[Step 2] Processing video...");
-    const processed = processVideo(genResult.videoPath);
-    console.log(`Output: ${processed.width}x${processed.height}, ${processed.fps}fps, ${processed.duration}s`);
-
-    if (testMode) {
-      // Skip YouTube upload in test mode
-      updateJob(db, job.id, { status: "done" });
-      console.log("\n=== TEST MODE COMPLETE ===");
-      console.log(`Object: ${template.name}`);
-      console.log(`Video saved: ${processed.outputPath}`);
-      console.log("==========================\n");
-      return true;
-    }
-
-    // Step 3: Upload to YouTube
-    console.log("\n[Step 3] Uploading to YouTube...");
-    updateJob(db, job.id, { status: "uploading" });
-    const ytResult = await uploadToYouTube(processed.outputPath, title, description, tags);
-
-    // Step 4: Record success
+    const ytResult = await uploadToYouTube(videoPath, title, description, tags);
     updateJob(db, job.id, { status: "done" });
 
-    console.log("\n=== VIDEO COMPLETE ===");
-    console.log(`Object: ${template.name}`);
-    console.log(`YouTube: ${ytResult.url}`);
-    console.log("======================\n");
-
+    console.log(`✅ Uploaded: ${ytResult.url}`);
     return true;
   } catch (err: any) {
-    console.error("\nPipeline failed:", err.message);
+    console.error(`❌ Failed: ${err.message}`);
     updateJob(db, job.id, { status: "failed", error: err.message });
     return false;
   }
 }
 
 /**
- * Run all 6 daily videos sequentially.
- * Each video uses a different object template.
+ * Run batch of re-uploads
  */
 export async function runDailyBatch(): Promise<void> {
   console.log("\n========================================");
-  console.log("  CRUSHING REELS FACTORY — Daily Batch");
-  console.log(`  Generating ${VIDEOS_PER_DAY} videos`);
+  console.log("  CRUSHING REELS FACTORY — Re-Upload Batch");
+  console.log(`  Uploading ${VIDEOS_PER_DAY} existing videos`);
   console.log("========================================\n");
 
-  const db = loadDb();
-  const templates = getTemplates();
-
-  // Find templates not yet used today
-  const usedToday = db.jobs
-    .filter((j) => {
-      if (!j.completedAt) return false;
-      const jobDate = new Date(j.completedAt).toDateString();
-      return jobDate === new Date().toDateString() && j.status === "done";
-    })
-    .map((j) => j.prompt);
-
-  const available = templates.filter(
-    (t) => !usedToday.some((p) => p.includes(t.name))
-  );
-
-  if (available.length === 0) {
-    console.log("All templates used today. Resetting pool...");
-    // Shuffle and allow reuse
-    const shuffled = [...templates].sort(() => Math.random() - 0.5);
-    return runBatchFromTemplates(shuffled.slice(0, VIDEOS_PER_DAY));
-  }
-
-  // Shuffle available templates
-  const shuffled = [...available].sort(() => Math.random() - 0.5);
-  const toUse = shuffled.slice(0, VIDEOS_PER_DAY);
-  await runBatchFromTemplates(toUse);
-}
-
-async function runBatchFromTemplates(templates: ObjectTemplate[]): Promise<void> {
   let successCount = 0;
-  let failCount = 0;
 
-  for (let i = 0; i < templates.length; i++) {
-    console.log(`\n>>> Video ${i + 1}/${templates.length}: ${templates[i].name}`);
+  for (let i = 0; i < VIDEOS_PER_DAY; i++) {
+    console.log(`\n>>> Upload ${i + 1}/${VIDEOS_PER_DAY}`);
+    const success = await reUploadRandom();
+    if (success) successCount++;
 
-    const success = await runPipelineOnce(templates[i]);
-    if (success) {
-      successCount++;
-    } else {
-      failCount++;
-    }
-
-    // Small delay between videos to avoid rate limits
-    if (i < templates.length - 1) {
-      console.log("Waiting 30 seconds before next video...");
-      await new Promise((r) => setTimeout(r, 30_000));
+    // Delay between uploads
+    if (i < VIDEOS_PER_DAY - 1) {
+      console.log("Waiting 30 seconds...");
+      await new Promise(r => setTimeout(r, 30_000));
     }
   }
 
   console.log("\n========================================");
-  console.log("  DAILY BATCH COMPLETE");
-  console.log(`  Success: ${successCount}/${templates.length}`);
-  console.log(`  Failed: ${failCount}/${templates.length}`);
+  console.log("  DAILY RE-UPLOAD COMPLETE");
+  console.log(`  Success: ${successCount}/${VIDEOS_PER_DAY}`);
   console.log("========================================\n");
 }
 
 /**
  * Start the daily scheduler.
- * Runs 6 videos per day at spaced intervals (8 AM to 8 PM UTC).
+ * Runs 6 re-uploads per day at 8,10,12,14,16,18 UTC.
  */
 export function startScheduler(): void {
   console.log("[scheduler] Starting daily scheduler...");
-  console.log(`[scheduler] ${VIDEOS_PER_DAY} videos per day, every ${INTERVAL_MINUTES} minutes`);
+  console.log(`[scheduler] ${VIDEOS_PER_DAY} re-uploads per day`);
   console.log("[scheduler] Schedule: 8:00, 10:00, 12:00, 14:00, 16:00, 18:00 UTC");
 
-  // Run at specific hours: 8, 10, 12, 14, 16, 18 UTC
   const schedule = "0 8,10,12,14,16,18 * * *";
 
   cron.schedule(schedule, () => {
@@ -169,12 +112,15 @@ export function startScheduler(): void {
 }
 
 /**
- * Run one video immediately (for manual testing).
+ * Run pipeline once (kept for compatibility)
+ */
+export async function runPipelineOnce(template: ObjectTemplate, testMode = false): Promise<boolean> {
+  return reUploadRandom();
+}
+
+/**
+ * Run single now (for manual trigger)
  */
 export async function runSingleNow(testMode = false): Promise<void> {
-  const templates = getTemplates();
-  // Use a counter to cycle through templates instead of random
-  const counter = loadDb().jobs.length || 0;
-  const template = templates[counter % templates.length];
-  await runPipelineOnce(template, testMode);
+  await reUploadRandom();
 }
