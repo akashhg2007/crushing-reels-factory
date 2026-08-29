@@ -2,133 +2,105 @@ import fs from "fs";
 import path from "path";
 import { config } from "../../config";
 
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-const MODEL = "veo-3.1-generate-preview";
-const POLL_INTERVAL_MS = 15_000;
-const MAX_POLL_ATTEMPTS = 40; // 10 minutes max
+const TOKEN_FILE = path.join(process.cwd(), "tokens", "puter.json");
+const MODEL = "bytedance/seedance-1.0-lite";
+const POLL_INTERVAL_MS = 10_000;
+const MAX_POLL_ATTEMPTS = 60; // 10 minutes max
 
 export interface VideoGenResult {
   videoPath: string;
   duration: number;
 }
 
-export async function generateVideo(prompt: string): Promise<VideoGenResult> {
-  const apiKey = config.gemini.apiKey;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not set in .env");
-  }
+let puterClient: any = null;
 
-  console.log("[video-gen] Starting video generation...");
-  console.log("[video-gen] Prompt:", prompt.substring(0, 120) + "...");
+async function getPuterClient(): Promise<any> {
+  if (puterClient) return puterClient;
 
-  // Step 1: Start long-running video generation
-  const generateUrl = `${BASE_URL}/models/${MODEL}:predictLongRunning`;
+  // Try environment variable first (for Render deployment), then file
+  let token = process.env.PUTER_AUTH_TOKEN;
 
-  const generateBody = {
-    instances: [
-      {
-        prompt: prompt,
-      },
-    ],
-    parameters: {
-      aspectRatio: "9:16",
-    },
-  };
-
-  console.log("[video-gen] Calling:", generateUrl);
-
-  const generateRes = await fetch(generateUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-    },
-    body: JSON.stringify(generateBody),
-  });
-
-  if (!generateRes.ok) {
-    const errText = await generateRes.text();
-    throw new Error(`Video generation request failed (${generateRes.status}): ${errText}`);
-  }
-
-  const generateData = (await generateRes.json()) as any;
-  const operationName = generateData.name;
-
-  if (!operationName) {
-    throw new Error("No operation name returned: " + JSON.stringify(generateData));
-  }
-
-  console.log("[video-gen] Operation started:", operationName);
-
-  // Step 2: Poll for completion
-  for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
-    await sleep(POLL_INTERVAL_MS);
-
-    const pollUrl = `${BASE_URL}/${operationName}`;
-    const pollRes = await fetch(pollUrl, {
-      headers: { "x-goog-api-key": apiKey },
-    });
-
-    if (!pollRes.ok) {
-      const err = await pollRes.text();
-      console.error(`[video-gen] Poll failed (${pollRes.status}):`, err.substring(0, 200));
-      continue;
+  if (!token) {
+    if (!fs.existsSync(TOKEN_FILE)) {
+      throw new Error(
+        "Puter auth token not found. Run: npm run auth:puter"
+      );
     }
-
-    const pollData = (await pollRes.json()) as any;
-
-    if (pollData.done) {
-      console.log("[video-gen] Video generation complete!");
-
-      // Extract video URI from response
-      // Response structure: response.generateVideoResponse.generatedSamples[0].video.uri
-      const videoUri =
-        pollData.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri ||
-        pollData.response?.videoUri ||
-        pollData.response?.generatedVideos?.[0]?.video?.uri;
-
-      if (!videoUri) {
-        throw new Error("No video URI found. Response: " + JSON.stringify(pollData.response).substring(0, 500));
-      }
-
-      console.log("[video-gen] Video URI:", videoUri.substring(0, 100) + "...");
-
-      // Step 3: Download the video
-      const outputPath = path.join(config.paths.output, `raw_${Date.now()}.mp4`);
-
-      await downloadVideo(videoUri, outputPath, apiKey);
-      console.log("[video-gen] Video saved to:", outputPath);
-
-      return { videoPath: outputPath, duration: 8 };
-    }
-
-    // Check for error in operation
-    if (pollData.error) {
-      throw new Error("Video generation error: " + JSON.stringify(pollData.error));
-    }
-
-    console.log(`[video-gen] Polling... (attempt ${attempt + 1}/${MAX_POLL_ATTEMPTS})`);
+    const data = JSON.parse(fs.readFileSync(TOKEN_FILE, "utf-8"));
+    token = data.token;
   }
 
-  throw new Error("Video generation timed out after 10 minutes");
+  const { init } = await import("@heyputer/puter.js/src/init.cjs");
+  puterClient = init(token);
+
+  return puterClient;
 }
 
-async function downloadVideo(url: string, outputPath: string, apiKey: string): Promise<void> {
-  // Add API key to URL for download
-  const separator = url.includes("?") ? "&" : "?";
-  const downloadUrl = `${url}${separator}key=${apiKey}`;
+export async function generateVideo(prompt: string): Promise<VideoGenResult> {
+  console.log("[video-gen] Starting video generation with Puter.js Seedance...");
+  console.log("[video-gen] Prompt:", prompt.substring(0, 120) + "...");
 
-  const res = await fetch(downloadUrl);
+  const puter = await getPuterClient();
+
+  // Generate video using Puter.js txt2vid
+  // Supported 9:16 resolutions: 480x864, 704x1248, 1088x1920
+  const result = await puter.ai.txt2vid(prompt, {
+    model: MODEL,
+    seconds: 6,
+    width: 704,
+    height: 1248,
+  });
+
+  console.log("[video-gen] Result type:", typeof result);
+  console.log("[video-gen] Result keys:", result ? Object.keys(result) : "null");
+
+  // Extract video source URL - handle different return types
+  let videoSrc: string | null = null;
+
+  if (result && typeof result === "object") {
+    // HTMLVideoElement or similar object
+    videoSrc =
+      result.getAttribute?.("data-source") ||
+      result.src ||
+      result.currentSrc ||
+      result.data?.source ||
+      result.url ||
+      result.video?.url ||
+      result[0]?.url;
+  } else if (typeof result === "string") {
+    // Direct URL string
+    videoSrc = result;
+  }
+
+  console.log("[video-gen] Video source:", videoSrc?.substring(0, 100) || "NOT FOUND");
+
+  if (!videoSrc) {
+    console.log("[video-gen] Full result:", JSON.stringify(result, null, 2)?.substring(0, 500));
+    throw new Error("No video source URL found in returned result");
+  }
+
+  console.log("[video-gen] Video source:", videoSrc.substring(0, 100) + "...");
+
+  // Download the video
+  const outputPath = path.join(config.paths.output, `raw_${Date.now()}.mp4`);
+  await downloadVideo(videoSrc, outputPath);
+
+  console.log("[video-gen] Video saved to:", outputPath);
+  return { videoPath: outputPath, duration: 6 };
+}
+
+async function downloadVideo(url: string, outputPath: string): Promise<void> {
+  const res = await fetch(url);
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Failed to download video (${res.status}): ${errText.substring(0, 300)}`);
+    throw new Error(
+      `Failed to download video (${res.status}): ${errText.substring(0, 300)}`
+    );
   }
 
   const buffer = Buffer.from(await res.arrayBuffer());
   fs.writeFileSync(outputPath, buffer);
-  console.log(`[video-gen] Downloaded ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  console.log(
+    `[video-gen] Downloaded ${(buffer.length / 1024 / 1024).toFixed(2)} MB`
+  );
 }

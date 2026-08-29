@@ -6,7 +6,7 @@ services:
     buildCommand: npm install
     startCommand: npx tsx src/index.ts serve
     envVars:
-      - key: GEMINI_API_KEY
+      - key: PUTER_AUTH_TOKEN
         sync: false
       - key: YOUTUBE_CLIENT_ID
         sync: false

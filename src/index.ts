@@ -20,7 +20,8 @@ async function main() {
 
     case "run":
       // Run one random video now
-      await runSingleNow();
+      const isTest = args.includes("--test");
+      await runSingleNow(isTest);
       break;
 
     case "batch":

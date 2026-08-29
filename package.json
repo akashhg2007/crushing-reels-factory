@@ -10,13 +10,16 @@
     "batch": "tsx src/index.ts batch",
     "list": "tsx src/index.ts list",
     "schedule": "tsx src/index.ts schedule",
-    "auth": "tsx src/index.ts auth"
+    "auth": "tsx src/index.ts auth",
+    "auth:puter": "tsx src/auth-puter.ts",
+    "test:gen": "tsx src/index.ts run --test"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@heyputer/puter.js": "^2.6.2",
     "@types/node": "^26.4.0",
     "@types/node-cron": "^3.0.11",
     "dotenv": "^17.4.2",

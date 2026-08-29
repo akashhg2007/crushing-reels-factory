@@ -19,10 +19,13 @@ const INTERVAL_MINUTES = Math.floor((END_HOUR - START_HOUR) * 60 / VIDEOS_PER_DA
 
 /**
  * Run the full pipeline for one video with a specific template.
+ * @param template - The object template to use
+ * @param testMode - If true, skip YouTube upload (for testing)
  */
-export async function runPipelineOnce(template: ObjectTemplate): Promise<boolean> {
+export async function runPipelineOnce(template: ObjectTemplate, testMode = false): Promise<boolean> {
   console.log("\n--- VIDEO PIPELINE START ---");
   console.log(`Object: ${template.name} (${template.material})`);
+  if (testMode) console.log("⚠️  TEST MODE — YouTube upload will be skipped");
 
   const db = loadDb();
   const prompt = generatePrompt(template);
@@ -45,6 +48,16 @@ export async function runPipelineOnce(template: ObjectTemplate): Promise<boolean
     console.log("\n[Step 2] Processing video...");
     const processed = processVideo(genResult.videoPath);
     console.log(`Output: ${processed.width}x${processed.height}, ${processed.fps}fps, ${processed.duration}s`);
+
+    if (testMode) {
+      // Skip YouTube upload in test mode
+      updateJob(db, job.id, { status: "done" });
+      console.log("\n=== TEST MODE COMPLETE ===");
+      console.log(`Object: ${template.name}`);
+      console.log(`Video saved: ${processed.outputPath}`);
+      console.log("==========================\n");
+      return true;
+    }
 
     // Step 3: Upload to YouTube
     console.log("\n[Step 3] Uploading to YouTube...");
@@ -155,8 +168,8 @@ export function startScheduler(): void {
 /**
  * Run one video immediately (for manual testing).
  */
-export async function runSingleNow(): Promise<void> {
+export async function runSingleNow(testMode = false): Promise<void> {
   const templates = getTemplates();
   const random = templates[Math.floor(Math.random() * templates.length)];
-  await runPipelineOnce(random);
+  await runPipelineOnce(random, testMode);
 }
