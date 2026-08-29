@@ -35,10 +35,18 @@ async function getPuterClient(): Promise<any> {
 
 /**
  * Generate video using available providers
- * Tries Google Flow first, falls back to Puter.js
+ * Tries Magic Hour first (free credits), then Google Flow, then Puter.js
  */
 export async function generateVideo(prompt: string): Promise<VideoGenResult> {
-  // Try Google Flow first (free, 50 credits/day)
+  // Try Magic Hour first (free credits, no credit card)
+  try {
+    const { generateVideo: magicHourGen } = await import("./magic-hour");
+    return await magicHourGen(prompt);
+  } catch (err: any) {
+    console.log("[video-gen] Magic Hour unavailable:", err.message);
+  }
+
+  // Try Google Flow (free, 50 credits/day)
   try {
     const { generateVideoWithFlow } = await import("./google-flow");
     return await generateVideoWithFlow(prompt);

@@ -12,6 +12,7 @@
     "schedule": "tsx src/index.ts schedule",
     "auth": "tsx src/index.ts auth",
     "auth:puter": "tsx src/auth-puter.ts",
+    "auth:magic-hour": "tsx src/auth-magic-hour.ts",
     "test:gen": "tsx src/index.ts run --test"
   },
   "keywords": [],
@@ -24,6 +25,7 @@
     "@types/node-cron": "^3.0.11",
     "dotenv": "^17.4.2",
     "googleapis": "^176.0.0",
+    "magic-hour": "^0.71.3",
     "node-cron": "^4.6.0",
     "playwright": "^1.62.1",
     "ts-node": "^10.9.2",
