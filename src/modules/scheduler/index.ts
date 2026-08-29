@@ -108,11 +108,14 @@ export async function runDailyBatch(): Promise<void> {
 
   if (available.length === 0) {
     console.log("All templates used today. Resetting pool...");
-    // If all used, allow reuse
-    return runBatchFromTemplates(templates.slice(0, VIDEOS_PER_DAY));
+    // Shuffle and allow reuse
+    const shuffled = [...templates].sort(() => Math.random() - 0.5);
+    return runBatchFromTemplates(shuffled.slice(0, VIDEOS_PER_DAY));
   }
 
-  const toUse = available.slice(0, VIDEOS_PER_DAY);
+  // Shuffle available templates
+  const shuffled = [...available].sort(() => Math.random() - 0.5);
+  const toUse = shuffled.slice(0, VIDEOS_PER_DAY);
   await runBatchFromTemplates(toUse);
 }
 
@@ -170,6 +173,8 @@ export function startScheduler(): void {
  */
 export async function runSingleNow(testMode = false): Promise<void> {
   const templates = getTemplates();
-  const random = templates[Math.floor(Math.random() * templates.length)];
-  await runPipelineOnce(random, testMode);
+  // Use a counter to cycle through templates instead of random
+  const counter = loadDb().jobs.length || 0;
+  const template = templates[counter % templates.length];
+  await runPipelineOnce(template, testMode);
 }
