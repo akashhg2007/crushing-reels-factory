@@ -1,4 +1,3 @@
-import { Client } from "magic-hour";
 import fs from "fs";
 import path from "path";
 import { config } from "../../config";
@@ -10,25 +9,65 @@ export interface VideoGenResult {
   duration: number;
 }
 
-function getApiKey(): string {
-  const envKey = process.env.MAGIC_HOUR_API_KEY;
-  if (envKey) return envKey;
+/**
+ * Get all API keys from env and tokens file
+ * Supports: MAGIC_HOUR_API_KEY=key1,key2,key3
+ */
+function getAllApiKeys(): string[] {
+  const keys: string[] = [];
 
-  if (fs.existsSync(API_KEY_FILE)) {
-    const data = JSON.parse(fs.readFileSync(API_KEY_FILE, "utf-8"));
-    return data.apiKey;
+  // From env (comma-separated)
+  const envKeys = process.env.MAGIC_HOUR_API_KEY;
+  if (envKeys) {
+    keys.push(...envKeys.split(",").map(k => k.trim()).filter(Boolean));
   }
 
-  throw new Error(
-    "Magic Hour API key not found. Sign up at magichour.ai/developer (free, no credit card) and set MAGIC_HOUR_API_KEY in .env"
-  );
+  // From tokens file
+  if (fs.existsSync(API_KEY_FILE)) {
+    const data = JSON.parse(fs.readFileSync(API_KEY_FILE, "utf-8"));
+    if (Array.isArray(data.apiKeys)) {
+      keys.push(...data.apiKeys);
+    } else if (data.apiKey) {
+      keys.push(data.apiKey);
+    }
+  }
+
+  return [...new Set(keys)]; // Remove duplicates
 }
 
+/**
+ * Try each API key until one works
+ */
 export async function generateVideo(prompt: string): Promise<VideoGenResult> {
+  const keys = getAllApiKeys();
+  if (keys.length === 0) {
+    throw new Error("No Magic Hour API keys found");
+  }
+
+  console.log(`[magic-hour] Trying ${keys.length} API key(s)...`);
+
+  let lastError: Error | null = null;
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const masked = key.substring(0, 15) + "..." + key.substring(key.length - 4);
+    console.log(`[magic-hour] Trying key ${i + 1}/${keys.length}: ${masked}`);
+
+    try {
+      const result = await generateWithKey(key, prompt);
+      return result;
+    } catch (err: any) {
+      console.log(`[magic-hour] Key ${i + 1} failed: ${err.message}`);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("All API keys failed");
+}
+
+async function generateWithKey(apiKey: string, prompt: string): Promise<VideoGenResult> {
   console.log("[magic-hour] Starting video generation...");
   console.log("[magic-hour] Prompt:", prompt.substring(0, 120) + "...");
-
-  const apiKey = getApiKey();
 
   // Truncate prompt to 2000 chars max (API limit)
   const truncatedPrompt = prompt.length > 2000 ? prompt.substring(0, 1997) + "..." : prompt;
