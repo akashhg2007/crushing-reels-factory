@@ -35,7 +35,7 @@ async function getPuterClient(): Promise<any> {
 
 /**
  * Generate video using available providers
- * Tries Magic Hour first (free credits), then Google Flow, then Puter.js
+ * Tries Magic Hour first (free credits), then Meta AI, then Google Flow, then Puter.js
  */
 export async function generateVideo(prompt: string): Promise<VideoGenResult> {
   // Try Magic Hour first (free credits, no credit card)
@@ -44,6 +44,14 @@ export async function generateVideo(prompt: string): Promise<VideoGenResult> {
     return await magicHourGen(prompt);
   } catch (err: any) {
     console.log("[video-gen] Magic Hour unavailable:", err.message);
+  }
+
+  // Try Meta AI (free, no API key needed)
+  try {
+    const { generateVideoWithMetaAI } = await import("./meta-ai");
+    return await generateVideoWithMetaAI(prompt);
+  } catch (err: any) {
+    console.log("[video-gen] Meta AI unavailable:", err.message);
   }
 
   // Try Google Flow (free, 50 credits/day)
