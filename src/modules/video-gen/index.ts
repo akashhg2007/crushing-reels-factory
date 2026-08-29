@@ -4,8 +4,6 @@ import { config } from "../../config";
 
 const TOKEN_FILE = path.join(process.cwd(), "tokens", "puter.json");
 const MODEL = "bytedance/seedance-1.0-lite";
-const POLL_INTERVAL_MS = 10_000;
-const MAX_POLL_ATTEMPTS = 60; // 10 minutes max
 
 export interface VideoGenResult {
   videoPath: string;
@@ -17,7 +15,6 @@ let puterClient: any = null;
 async function getPuterClient(): Promise<any> {
   if (puterClient) return puterClient;
 
-  // Try environment variable first (for Render deployment), then file
   let token = process.env.PUTER_AUTH_TOKEN;
 
   if (!token) {
@@ -36,7 +33,25 @@ async function getPuterClient(): Promise<any> {
   return puterClient;
 }
 
+/**
+ * Generate video using available providers
+ * Tries Google Flow first, falls back to Puter.js
+ */
 export async function generateVideo(prompt: string): Promise<VideoGenResult> {
+  // Try Google Flow first (free, 50 credits/day)
+  try {
+    const { generateVideoWithFlow } = await import("./google-flow");
+    return await generateVideoWithFlow(prompt);
+  } catch (err: any) {
+    console.log("[video-gen] Google Flow unavailable:", err.message);
+    console.log("[video-gen] Falling back to Puter.js...");
+  }
+
+  // Fallback to Puter.js
+  return await generateVideoWithPuter(prompt);
+}
+
+async function generateVideoWithPuter(prompt: string): Promise<VideoGenResult> {
   console.log("[video-gen] Starting video generation with Puter.js Seedance...");
   console.log("[video-gen] Prompt:", prompt.substring(0, 120) + "...");
 
@@ -46,7 +61,7 @@ export async function generateVideo(prompt: string): Promise<VideoGenResult> {
   // Supported 9:16 resolutions: 480x864, 704x1248, 1088x1920
   const result = await puter.ai.txt2vid(prompt, {
     model: MODEL,
-    seconds: 6,
+    seconds: 8,
     width: 704,
     height: 1248,
   });
@@ -58,7 +73,6 @@ export async function generateVideo(prompt: string): Promise<VideoGenResult> {
   let videoSrc: string | null = null;
 
   if (result && typeof result === "object") {
-    // HTMLVideoElement or similar object
     videoSrc =
       result.getAttribute?.("data-source") ||
       result.src ||
@@ -68,7 +82,6 @@ export async function generateVideo(prompt: string): Promise<VideoGenResult> {
       result.video?.url ||
       result[0]?.url;
   } else if (typeof result === "string") {
-    // Direct URL string
     videoSrc = result;
   }
 
@@ -79,14 +92,12 @@ export async function generateVideo(prompt: string): Promise<VideoGenResult> {
     throw new Error("No video source URL found in returned result");
   }
 
-  console.log("[video-gen] Video source:", videoSrc.substring(0, 100) + "...");
-
   // Download the video
   const outputPath = path.join(config.paths.output, `raw_${Date.now()}.mp4`);
   await downloadVideo(videoSrc, outputPath);
 
   console.log("[video-gen] Video saved to:", outputPath);
-  return { videoPath: outputPath, duration: 6 };
+  return { videoPath: outputPath, duration: 8 };
 }
 
 async function downloadVideo(url: string, outputPath: string): Promise<void> {
