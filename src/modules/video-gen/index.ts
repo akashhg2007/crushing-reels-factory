@@ -9,10 +9,20 @@ export interface VideoGenResult {
 
 /**
  * Generate video using available providers
- * Kling (66 free credits/day) → Magic Hour → Puter.js
+ * Luma (10 free/day) → Kling → Magic Hour → Puter.js
  */
 export async function generateVideo(prompt: string): Promise<VideoGenResult> {
-  // Try Kling AI first (66 free credits daily, no credit card)
+  // Try Luma Dream Machine first (10 free videos/day)
+  if (process.env.LUMA_AGENTS_API_KEY) {
+    try {
+      const { generateVideo: lumaGen } = await import("./luma");
+      return await lumaGen(prompt);
+    } catch (err: any) {
+      console.log("[video-gen] Luma unavailable:", err.message);
+    }
+  }
+
+  // Try Kling AI (66 free credits daily)
   if (process.env.KLING_API_KEY) {
     try {
       const { generateVideo: klingGen } = await import("./kling");
