@@ -1,0 +1,29 @@
+{
+  "name": "crushing-reels-factory",
+  "version": "1.0.0",
+  "description": "Automated AI video generation and YouTube Shorts publishing factory",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "run": "tsx src/index.ts run",
+    "batch": "tsx src/index.ts batch",
+    "list": "tsx src/index.ts list",
+    "schedule": "tsx src/index.ts schedule",
+    "auth": "tsx src/index.ts auth"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@types/node": "^26.4.0",
+    "@types/node-cron": "^3.0.11",
+    "dotenv": "^17.4.2",
+    "googleapis": "^176.0.0",
+    "node-cron": "^4.6.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}

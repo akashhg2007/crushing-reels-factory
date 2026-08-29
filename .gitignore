@@ -1,0 +1,7 @@
+node_modules/
+dist/
+output/
+tokens/
+.env
+*.log
+data/db.json
