@@ -20,7 +20,7 @@ export interface ProcessResult {
  * - 9:16 aspect ratio (1080x1920)
  * - 30fps
  * - H.264 codec
- * - Trending background music from YouTube
+ * - Trending background music from YouTube (if available)
  */
 export function processVideo(inputPath: string): ProcessResult {
   const timestamp = Date.now();
@@ -33,15 +33,18 @@ export function processVideo(inputPath: string): ProcessResult {
   const inputInfo = getVideoInfo(inputPath);
   console.log("[video-processor] Input info:", inputInfo);
 
-  // Get random music track
+  // Get random music track (optional)
   const musicTrack = getRandomMusicTrack();
-  console.log("[video-processor] Using music:", path.basename(musicTrack));
+  const hasMusic = musicTrack !== null;
+  if (hasMusic) {
+    console.log("[video-processor] Using music:", path.basename(musicTrack!));
+    const musicDuration = getAudioDuration(musicTrack!);
+    console.log("[video-processor] Music duration:", musicDuration.toFixed(1) + "s");
+  } else {
+    console.log("[video-processor] No music available, processing without audio");
+  }
 
-  // Get music duration
-  const musicDuration = getAudioDuration(musicTrack);
-  console.log("[video-processor] Music duration:", musicDuration.toFixed(1) + "s");
-
-  // Build FFmpeg command with music and strict 15s duration
+  // Build FFmpeg command with music (if available) and strict 15s duration
   const targetW = 1080;
   const targetH = 1920;
   const targetRatio = targetW / targetH;
@@ -57,23 +60,39 @@ export function processVideo(inputPath: string): ProcessResult {
     videoFilter = `scale=${targetW}:${targetH}:flags=lanczos,fps=30`;
   }
 
-  // Trim video to exactly 15 seconds, add music, fade out at end
-  const cmd = [
-    "ffmpeg -y",
-    `-i "${inputPath}"`,
-    `-i "${musicTrack}"`,
-    `-filter_complex`,
-    `"[0:v]${videoFilter},trim=duration=${TARGET_DURATION},setpts=PTS-STARTPTS[v];` +
-    `[1:a]atrim=duration=${TARGET_DURATION},afade=t=out:st=13:d=2,volume=0.7[a]"`,
-    `-map "[v]" -map "[a]"`,
-    "-c:v libx264 -preset fast -crf 18",
-    "-c:a aac -b:a 128k -ar 44100",
-    `-t ${TARGET_DURATION}`,
-    "-movflags +faststart",
-    `"${outputPath}"`,
-  ].join(" ");
-
-  console.log("[video-processor] Running FFmpeg (15s + music)...");
+  let cmd: string;
+  if (hasMusic) {
+    // With music
+    cmd = [
+      "ffmpeg -y",
+      `-i "${inputPath}"`,
+      `-i "${musicTrack}"`,
+      `-filter_complex`,
+      `"[0:v]${videoFilter},trim=duration=${TARGET_DURATION},setpts=PTS-STARTPTS[v];` +
+      `[1:a]atrim=duration=${TARGET_DURATION},afade=t=out:st=13:d=2,volume=0.7[a]"`,
+      `-map "[v]" -map "[a]"`,
+      "-c:v libx264 -preset fast -crf 18",
+      "-c:a aac -b:a 128k -ar 44100",
+      `-t ${TARGET_DURATION}`,
+      "-movflags +faststart",
+      `"${outputPath}"`,
+    ].join(" ");
+    console.log("[video-processor] Running FFmpeg (15s + music)...");
+  } else {
+    // Without music
+    cmd = [
+      "ffmpeg -y",
+      `-i "${inputPath}"`,
+      `-filter_complex`,
+      `"[0:v]${videoFilter},trim=duration=${TARGET_DURATION},setpts=PTS-STARTPTS[v]"`,
+      `-map "[v]"`,
+      "-c:v libx264 -preset fast -crf 18",
+      `-t ${TARGET_DURATION}`,
+      "-movflags +faststart",
+      `"${outputPath}"`,
+    ].join(" ");
+    console.log("[video-processor] Running FFmpeg (15s, no music)...");
+  }
   try {
     execSync(cmd, { stdio: "pipe", timeout: 120_000 });
   } catch (err: any) {
@@ -96,14 +115,14 @@ export function processVideo(inputPath: string): ProcessResult {
   };
 }
 
-function getRandomMusicTrack(): string {
+function getRandomMusicTrack(): string | null {
   if (!fs.existsSync(MUSIC_DIR)) {
-    throw new Error("Music directory not found. Add MP3 files to music/");
+    return null;
   }
 
   const tracks = fs.readdirSync(MUSIC_DIR).filter((f) => f.endsWith(".mp3"));
   if (tracks.length === 0) {
-    throw new Error("No music tracks found in music/ directory");
+    return null;
   }
 
   const random = tracks[Math.floor(Math.random() * tracks.length)];
