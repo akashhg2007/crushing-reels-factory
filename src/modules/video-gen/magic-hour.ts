@@ -36,7 +36,17 @@ function getAllApiKeys(): string[] {
 }
 
 /**
- * Try each API key until one works
+ * Select API key based on current time
+ * Each key gets a 4-hour window for ~4-5 videos
+ */
+function selectApiKey(keys: string[]): string {
+  const hour = new Date().getUTCHours();
+  const index = Math.floor(hour / 4) % keys.length;
+  return keys[index];
+}
+
+/**
+ * Generate video using API key selected by time
  */
 export async function generateVideo(prompt: string): Promise<VideoGenResult> {
   const keys = getAllApiKeys();
@@ -44,25 +54,13 @@ export async function generateVideo(prompt: string): Promise<VideoGenResult> {
     throw new Error("No Magic Hour API keys found");
   }
 
-  console.log(`[magic-hour] Trying ${keys.length} API key(s)...`);
+  const selectedKey = selectApiKey(keys);
+  const keyIndex = Math.floor(new Date().getUTCHours() / 4) % keys.length;
+  const masked = selectedKey.substring(0, 15) + "..." + selectedKey.substring(selectedKey.length - 4);
+  console.log(`[magic-hour] Using key ${keyIndex + 1}/${keys.length}: ${masked}`);
+  console.log(`[magic-hour] (Each key used for 4-hour window)`);
 
-  let lastError: Error | null = null;
-
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i];
-    const masked = key.substring(0, 15) + "..." + key.substring(key.length - 4);
-    console.log(`[magic-hour] Trying key ${i + 1}/${keys.length}: ${masked}`);
-
-    try {
-      const result = await generateWithKey(key, prompt);
-      return result;
-    } catch (err: any) {
-      console.log(`[magic-hour] Key ${i + 1} failed: ${err.message}`);
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error("All API keys failed");
+  return await generateWithKey(selectedKey, prompt);
 }
 
 async function generateWithKey(apiKey: string, prompt: string): Promise<VideoGenResult> {

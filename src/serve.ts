@@ -1,7 +1,6 @@
 import http from "http";
 import { runDailyBatch, startScheduler, runPipelineOnce } from "./modules/scheduler";
 import { getTemplates } from "./modules/prompt-engine";
-import { config } from "./config";
 
 const PORT = process.env.PORT || 3000;
 
@@ -62,12 +61,6 @@ export async function serve(): Promise<void> {
 
   // Start the daily scheduler
   startScheduler();
-
-  // Run one video immediately on startup (first deploy)
-  console.log("[serve] Running initial video on startup...");
-  const templates = getTemplates();
-  const random = templates[Math.floor(Math.random() * templates.length)];
-  await runPipelineOnce(random);
 
   console.log("[serve] Factory is running! Videos will generate at 8,10,12,14,16,18 UTC");
 }
