@@ -1,0 +1,10 @@
+name = "youtube-shorts-uploader"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[triggers]
+crons = ["0 7 * * *", "0 19 * * *"]
+
+[[kv_namespaces]]
+binding = "KV"
+id = "b171d87028184de486a4858cb2dab4ee"
